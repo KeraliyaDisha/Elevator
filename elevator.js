@@ -1,76 +1,143 @@
-let liftPositions = Array(5).fill(0); // Elevators start at ground floor
-let movingLifts = Array(5).fill(false);
-let buttonStatus = Array(10).fill(false);
-let callQueue = [];
+var buttons = document.querySelectorAll(".call-btn");
+var elevators = document.querySelectorAll(".lift");
 
-const playSound = () => {
-    const audio = new Audio('https://media.geeksforgeeks.org/wp-content/uploads/20190531135120/beep.mp3');
-    audio.play();
+var queueFloors = [];
+var allLiftStatus = [];
+
+for (var i = 0; i < elevators.length; i++) {
+  allLiftStatus.push({
+    liftIndex: i,
+    moving: false,
+    floor: 0,
+  });
+}
+
+
+window.onload = function () {
+  for (var i = 0; i < elevators.length; i++) {
+    elevators[i].style.transform = "translateY(0%)";  
+    elevators[i].style.filter = "none";  
+    allLiftStatus[i].floor = 0;  
+  }
 };
 
-const handleButtonClick = (floor) => {
-    if (buttonStatus[floor]) return;
-    buttonStatus[floor] = true;
-    document.getElementById(`btn-${floor}`).textContent = 'Waiting...';
-    document.getElementById(`btn-${floor}`).style.backgroundColor = 'red';
-    
-    callQueue.push(floor);
-    processQueue();
-};
 
-const processQueue = () => {
-    if (callQueue.length === 0) return;
-    
-    let floorIndex = callQueue.shift();
-    let availableLift = findClosestLift(floorIndex);
-    
-    if (availableLift !== -1) {
-        moveLift(availableLift, floorIndex);
-    } else {
-        callQueue.push(floorIndex); 
+function findNearestLift(currentFloor) {
+  var nearestLift = null;
+  var minDistance = Infinity;
+
+  for (var i = 0; i < allLiftStatus.length; i++) {
+    var lift = allLiftStatus[i];
+    if (!lift.moving) {  
+      var distance = Math.abs(currentFloor - lift.floor);
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearestLift = lift;
+      }
     }
-};
+  }
+  return nearestLift;
+}
 
-const findClosestLift = (floorIndex) => {
-    let minDistance = Infinity;
-    let closestLift = -1;
-    
-    liftPositions.forEach((pos, i) => {
-        if (!movingLifts[i]) {
-            let distance = Math.abs(pos - floorIndex);
-            if (distance < minDistance) {
-                minDistance = distance;
-                closestLift = i;
-            }
-        }
-    });
-    
-    return closestLift;
-};
 
-const moveLift = (liftIndex, floorIndex) => {
-    movingLifts[liftIndex] = true;
-    let currentFloor = liftPositions[liftIndex];
-    let travelTime = Math.abs(currentFloor - floorIndex) * 500;
-    
-    let liftElement = document.querySelector(`#lift-${liftIndex}`);
-    liftElement.style.transition = `transform ${travelTime / 1000}s linear`;
-    liftElement.style.transform = `translateY(${-floorIndex * 60}px)`;
-    liftElement.style.backgroundColor = 'red';
-    
-    setTimeout(() => {
-        playSound();
-        liftElement.style.backgroundColor = 'green';
-        
-        document.getElementById(`btn-${floorIndex}`).textContent = 'Arrived';
-        
-        setTimeout(() => {
-            liftElement.style.backgroundColor = 'black';
-            document.getElementById(`btn-${floorIndex}`).textContent = 'Call';
-            document.getElementById(`btn-${floorIndex}`).style.backgroundColor = 'green';
-            movingLifts[liftIndex] = false;
-            liftPositions[liftIndex] = floorIndex;
-            processQueue();
-        }, 2000);
-    }, travelTime);
-};
+function isLiftAlreadyThere(calledFloor) {
+  return allLiftStatus.some((lift) => lift.floor === calledFloor);
+}
+
+function areAllLiftsBusy() {
+  return allLiftStatus.every((lift) => lift.moving);
+}
+
+
+function updateButtonUI(button, text, bgColor, disabled) {
+  button.textContent = text;
+  button.style.backgroundColor = bgColor;
+  button.disabled = !!disabled;
+}
+
+function playSound() {
+  var audio = new Audio("./sound/beep-01a.mp3");
+  audio.play();
+}
+
+buttons.forEach((button) => {
+  button.addEventListener("click", function () {
+    var clickedFloor = parseInt(this.id.split("-")[1]);
+
+    if (areAllLiftsBusy()) {
+      queueFloors.push(clickedFloor);  
+      return;
+    }
+
+    if (!isLiftAlreadyThere(clickedFloor)) {
+      updateButtonUI(this, "Waiting", "red", true);  
+      handleLiftRequest(clickedFloor, this); 
+    }
+  });
+});
+
+
+function handleLiftRequest(clickedFloor, button) {
+  var lift = findNearestLift(clickedFloor);
+  if (!lift) {
+    queueFloors.push(clickedFloor); 
+    return;
+  }
+  moveElevator(lift, clickedFloor, button);  
+}
+
+
+function moveElevator(lift, targetFloor, button) {
+  var elevator = elevators[lift.liftIndex];
+  var floorHeight = document.querySelector(".floor").offsetHeight;  
+  var travelTime = Math.abs(targetFloor - lift.floor) * 0.5; 
+
+  lift.moving = true;
+  lift.floor = targetFloor; 
+
+  updateElevatorUI(elevator, "moving");  
+  button.textContent = "Waiting (" + travelTime.toFixed(1) + "s)";  
+
+  elevator.style.transition = "transform " + travelTime + "s linear";
+  elevator.style.transform = "translateY(-" + targetFloor * floorHeight + "px)";  
+
+
+  setTimeout(function () {
+    playSound();  
+    updateElevatorUI(elevator, "arrived"); 
+    updateButtonUI(button, "Arrived", "black", false);  
+    setTimeout(function () {
+      resetElevator(lift, elevator, button); 
+    }, 2000);
+  }, travelTime * 1000); 
+}
+
+
+function resetElevator(lift, elevator, button) {
+  lift.moving = false;
+  updateElevatorUI(elevator, "idle");  
+
+  updateButtonUI(button, "Call", "#148e31", false);
+
+
+  if (queueFloors.length > 0) {
+    var nextFloor = queueFloors.shift(); 
+    var nextButton = document.getElementById("btn-" + nextFloor);
+    handleLiftRequest(nextFloor, nextButton); 
+  }
+}
+
+function updateElevatorUI(elevator, status) {
+  var color;
+
+  if (status === "moving") {
+    color = "red";
+  } else if (status === "arrived") {
+    color = "green";
+  } else {
+    color = "transparent";
+  }
+
+  elevator.style.transition = "background-color 0.5s ease";  
+  elevator.style.backgroundColor = color;
+}
